@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>机器学习实验平台</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg,  #fbfeff 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2c3e50, #34495e);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.8;
+            font-size: 1.1em;
+        }
+
+        .content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            padding: 30px;
+        }
+
+        @media (max-width: 768px) {
+            .content {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .config-panel {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 10px;
+            border: 1px solid #e9ecef;
+        }
+
+        .config-group {
+            margin-bottom: 25px;
+        }
+
+        .config-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .config-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        .config-group select:focus {
+            outline: none;
+            border-color: #3498db;
+        }
+
+        .run-button {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .run-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(52, 152, 219, 0.4);
+        }
+
+        .run-button:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .results-panel {
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            border: 1px solid #e9ecef;
+        }
+
+        .results-content {
+            min-height: 300px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #7f8c8d;
+        }
+
+        .result-item {
+            background: #f8f9fa;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #3498db;
+        }
+
+        .result-item h3 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+
+        .accuracy {
+            font-size: 2em;
+            font-weight: bold;
+            color: #27ae60;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .dataset-info {
+            background: #e8f4fd;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .feature-importance {
+            margin-top: 20px;
+        }
+
+        .feature-bar {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .feature-name {
+            width: 100px;
+            font-size: 14px;
+        }
+
+        .feature-value {
+            flex: 1;
+            background: #ecf0f1;
+            height: 20px;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .feature-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #3498db, #2980b9);
+            transition: width 0.5s;
+        }
+        
+        .card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border-left: 4px solid #3498db;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .card h3 {
+            margin-top: 0;
+            color: #2c3e50;
+            border-bottom: 1px solid #dee2e6;
+            padding-bottom: 10px;
+        }
+
+        .info-grid p {
+            margin: 8px 0;
+            line-height: 1.5;
+        }
+
+        .accuracy {
+            font-size: 3em;
+            font-weight: bold;
+            color: #27ae60;
+            text-align: center;
+            margin: 20px 0;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .feature-name {
+            width: 120px;
+            font-size: 14px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* 响应式调整 */
+        @media (max-width: 768px) {
+            .feature-name {
+                width: 80px;
+                font-size: 12px;
+            }
+            
+            .accuracy {
+                font-size: 2.5em;
+            }
+        }
+        /* 评估指标比较样式 */
+        .metrics-comparison {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .metric-card {
+            text-align: center;
+            padding: 15px;
+            border-radius: 8px;
+            background: #f8f9fa;
+            transition: all 0.3s ease;
+        }
+
+        .metric-card.active {
+            background: #e8f4fd;
+            border: 2px solid #3498db;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(52, 152, 219, 0.2);
+        }
+
+        .metric-value {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #3498db;
+            margin-bottom: 5px;
+        }
+
+        .metric-label {
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        .hyperparam-group {
+            margin-bottom: 15px;
+        }
+
+        .hyperparam-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #2c3e50;
+            font-size: 14px;
+        }
+
+        .hyperparam-group input, .hyperparam-group select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .hyperparam-group input[type="range"] {
+            width: 100%;
+        }
+
+        .hyperparam-value {
+            font-size: 12px;
+            color: #666;
+            margin-top: 2px;
+        }
+
+        .export-btn {
+            background: #27ae60;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-left: 10px;
+        }
+
+        .export-btn:hover {
+            background: #229954;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>机器学习实验平台</h1>
+            <p>选择数据集和模型，运行机器学习实验</p>
+        </div>
+
+        <div class="content">
+            <div class="config-panel">
+                <div class="config-group">
+                    <label for="dataset">📊 数据集</label>
+                    <div style="display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: end;">
+                        <select id="dataset">
+                            <option value="iris">鸢尾花数据集 (Iris)</option>
+                            <option value="watermelon">西瓜数据集 (Watermelon)</option>
+                            <option value="custom">自定义 CSV</option>
+                        </select>
+                        <button id="uploadBtn" type="button" style="padding: 10px 12px; border-radius: 8px; border: 2px solid #3498db; background: white; color: #3498db; font-weight: 600; cursor: pointer;">上传 CSV</button>
+                        <input id="fileInput" type="file" accept=".csv" style="display:none" />
+                    </div>
+                </div>
+
+                <div class="config-group">
+                    <label for="test_size">📈 测试集比例</label>
+                    <select id="test_size">
+                        <option value="10%">10%</option>
+                        <option value="30%" selected>30%</option>
+                    </select>
+                </div>
+
+                <div class="config-group">
+                    <label for="split_method">✂️ 数据分割方式</label>
+                    <select id="split_method">
+                        <option value="random">随机分割</option>
+                        <option value="kfold">K折交叉验证</option>
+                    </select>
+                </div>
+
+
+                <div class="config-group" id="labelGroup">
+                    <label for="metric">📏 评估指标</label>
+                    <select id="metric">
+                        <option value="accuracy">准确率 (Accuracy)</option>
+                        <option value="f1">F1 分数</option>
+                    </select>
+                </div>
+
+                <div class="config-group" id="targetLabelGroup" style="display:none;">
+                    <label for="label_column">🎯 标签列选择</label>
+                    <select id="label_column"></select>
+                    <div id="uploadMeta" style="margin-top:8px;color:#666;font-size:12px;"></div>
+                </div>
+
+                <!-- 在config-group部分更新模型选择下拉菜单 -->
+                <div class="config-group">
+                    <label for="model">🤖 机器学习模型</label>
+                    <select id="model">
+                        <optgroup label="分类">
+                            <option value="逻辑回归">逻辑回归</option>
+                            <option value="决策树">决策树</option>
+                            <option value="支持向量机(SVM)">支持向量机 (SVM)</option>
+                            <option value="K近邻(KNN)">K近邻 (KNN)</option>
+                            <option value="随机森林">随机森林</option>
+                            <option value="梯度提升树(GBDT)">梯度提升树 (GBDT)</option>
+                            <option value="多层感知机(MLP)">多层感知机 (MLP)</option>
+                        </optgroup>
+                        <optgroup label="回归">
+                            <option value="线性回归">线性回归</option>
+                        </optgroup>
+                        <optgroup label="无监督">
+                            <option value="K 均值聚类(K-Means)">K 均值聚类 (K-Means)</option>
+                            <option value="主成分分析(PCA)">主成分分析 (PCA)</option>
+                        </optgroup>
+                    </select>
+                </div>
+
+                <!-- 模型超参数配置面板 -->
+                <div class="config-group" id="hyperparamsGroup" style="display:none;">
+                    <label>⚙️ 模型参数</label>
+                    <div id="hyperparamsContent" style="background: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid #e9ecef;">
+                        <p style="color: #666; margin: 0;">选择模型后显示可调参数</p>
+                    </div>
+                </div>
+
+                <button class="run-button" onclick="runExperiment()">
+                    🚀 运行实验
+                </button>
+            </div>
+
+            <div class="results-panel">
+                <h2>实验结果</h2>
+                <div class="loading" id="loading">
+                    <div class="spinner"></div>
+                    <p>正在训练模型，请稍候...</p>
+                </div>
+                <div class="results-content" id="resultsContent">
+                    <p>请点击"运行实验"按钮查看结果</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentDatasetId = null;
+        const datasetSelect = document.getElementById('dataset');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const fileInput = document.getElementById('fileInput');
+        const targetLabelGroup = document.getElementById('targetLabelGroup');
+        const labelColumnSelect = document.getElementById('label_column');
+        const uploadMeta = document.getElementById('uploadMeta');
+        const hyperparamsGroup = document.getElementById('hyperparamsGroup');
+        const hyperparamsContent = document.getElementById('hyperparamsContent');
+
+        datasetSelect.addEventListener('change', () => {
+            const isCustom = datasetSelect.value === 'custom';
+            targetLabelGroup.style.display = isCustom ? 'block' : 'none';
+        });
+
+        // 模型选择变化时显示超参数面板
+        document.getElementById('model').addEventListener('change', (e) => {
+            const modelName = e.target.value;
+            updateHyperparamsPanel(modelName);
+        });
+
+        uploadBtn.addEventListener('click', () => {
+            if (datasetSelect.value !== 'custom') {
+                datasetSelect.value = 'custom';
+                targetLabelGroup.style.display = 'block';
+            }
+            fileInput.click();
+        });
+
+        fileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            if (!file.name.toLowerCase().endsWith('.csv')) {
+                alert('请上传CSV文件');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            uploadBtn.disabled = true;
+            uploadBtn.textContent = '上传中...';
+            try {
+                const resp = await fetch('/upload_csv', { method: 'POST', body: formData });
+                const data = await resp.json();
+                if (!data.success) throw new Error(data.error || '上传失败');
+
+                currentDatasetId = data.dataset_id;
+                // 填充标签列选择
+                labelColumnSelect.innerHTML = '';
+                data.columns.forEach(col => {
+                    const opt = document.createElement('option');
+                    opt.value = col;
+                    opt.textContent = col;
+                    labelColumnSelect.appendChild(opt);
+                });
+                if (data.suggested_label) {
+                    labelColumnSelect.value = data.suggested_label;
+                }
+                targetLabelGroup.style.display = 'block';
+                uploadMeta.textContent = `文件列数: ${data.features}，样本数: ${data.samples}`;
+                // 显示数据预览
+                showDataPreview(data);
+            } catch (err) {
+                alert(err.message);
+            } finally {
+                uploadBtn.disabled = false;
+                uploadBtn.textContent = '上传 CSV';
+                fileInput.value = '';
+            }
+        });
+
+        // 更新超参数面板
+        function updateHyperparamsPanel(modelName) {
+            const params = getModelHyperparams(modelName);
+            if (params.length === 0) {
+                hyperparamsGroup.style.display = 'none';
+                return;
+            }
+
+            hyperparamsGroup.style.display = 'block';
+            let html = '';
+            params.forEach(param => {
+                html += `
+                    <div class="hyperparam-group">
+                        <label for="${param.id}">${param.label}</label>
+                        ${param.type === 'range' ? 
+                            `<input type="range" id="${param.id}" min="${param.min}" max="${param.max}" step="${param.step || 0.01}" value="${param.default}" oninput="updateRangeValue('${param.id}', this.value)">
+                             <div class="hyperparam-value" id="${param.id}_value">${param.default}</div>` :
+                            `<select id="${param.id}">${param.options.map(opt => `<option value="${opt.value}">${opt.label}</option>`).join('')}</select>`
+                        }
+                    </div>
+                `;
+            });
+            hyperparamsContent.innerHTML = html;
+        }
+
+        // 更新滑块值显示
+        function updateRangeValue(id, value) {
+            document.getElementById(id + '_value').textContent = value;
+        }
+
+        // 获取模型超参数配置
+        function getModelHyperparams(modelName) {
+            const params = {
+                '支持向量机(SVM)': [
+                    { id: 'svm_c', label: 'C (正则化参数)', type: 'range', min: 0.1, max: 10, step: 0.1, default: 1 },
+                    { id: 'svm_gamma', label: 'Gamma', type: 'select', options: [
+                        { value: 'scale', label: 'scale (1/n_features)' },
+                        { value: 'auto', label: 'auto (1/n_features)' },
+                        { value: 0.001, label: '0.001' },
+                        { value: 0.01, label: '0.01' },
+                        { value: 0.1, label: '0.1' },
+                        { value: 1, label: '1' }
+                    ], default: 'scale' }
+                ],
+                'K近邻(KNN)': [
+                    { id: 'knn_n', label: 'K (邻居数)', type: 'range', min: 1, max: 20, step: 1, default: 3 }
+                ],
+                '决策树': [
+                    { id: 'tree_depth', label: '最大深度', type: 'range', min: 1, max: 20, step: 1, default: 10 }
+                ],
+                '随机森林': [
+                    { id: 'rf_estimators', label: '树的数量', type: 'range', min: 10, max: 200, step: 10, default: 100 },
+                    { id: 'rf_depth', label: '最大深度', type: 'range', min: 1, max: 20, step: 1, default: 10 }
+                ],
+                '梯度提升树(GBDT)': [
+                    { id: 'gbdt_estimators', label: '树的数量', type: 'range', min: 10, max: 200, step: 10, default: 100 },
+                    { id: 'gbdt_lr', label: '学习率', type: 'range', min: 0.01, max: 0.5, step: 0.01, default: 0.1 }
+                ],
+                '多层感知机(MLP)': [
+                    { id: 'mlp_hidden', label: '隐藏层大小', type: 'select', options: [
+                        { value: '50', label: '50' },
+                        { value: '100', label: '100' },
+                        { value: '100,50', label: '100,50' },
+                        { value: '200', label: '200' }
+                    ], default: '100' },
+                    { id: 'mlp_lr', label: '学习率', type: 'range', min: 0.0001, max: 0.01, step: 0.0001, default: 0.001 }
+                ],
+                'K 均值聚类(K-Means)': [
+                    { id: 'kmeans_k', label: '聚类数 K', type: 'range', min: 2, max: 10, step: 1, default: 3 }
+                ],
+                '主成分分析(PCA)': [
+                    { id: 'pca_components', label: '主成分数', type: 'range', min: 1, max: 10, step: 1, default: 2 }
+                ]
+            };
+            return params[modelName] || [];
+        }
+
+        // 显示数据预览
+        function showDataPreview(data) {
+            // 这里可以添加数据预览功能
+            console.log('Data preview:', data);
+        }
+
+        async function runExperiment() {
+        const runButton = document.querySelector('.run-button');
+        const loading = document.getElementById('loading');
+        const resultsContent = document.getElementById('resultsContent');
+
+        // 获取用户选择
+        const config = {
+            dataset: document.getElementById('dataset').value,
+            test_size: document.getElementById('test_size').value,
+            split_method: document.getElementById('split_method').value,
+            model: document.getElementById('model').value,
+            metric: document.getElementById('metric').value,
+            hyperparams: getHyperparamsConfig()
+        };
+
+        if (config.dataset === 'custom') {
+            if (!currentDatasetId) {
+                alert('请先上传CSV文件');
+                runButton.disabled = false; runButton.textContent = '🚀 运行实验'; loading.style.display = 'none';
+                return;
+            }
+            const labelCol = document.getElementById('label_column').value;
+            if (!labelCol) {
+                alert('请选择标签列');
+                runButton.disabled = false; runButton.textContent = '🚀 运行实验'; loading.style.display = 'none';
+                return;
+            }
+            config.dataset_id = currentDatasetId;
+            config.label_column = labelCol;
+        }
+
+        // 显示加载状态
+        runButton.disabled = true;
+        runButton.textContent = '训练中...';
+        loading.style.display = 'block';
+        resultsContent.innerHTML = '';
+
+        try {
+            const response = await fetch('/run_experiment', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(config)
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                displayResults(data.results);
+            } else {
+                resultsContent.innerHTML = `
+                    <div style="color: #e74c3c; text-align: center;">
+                        <h3>❌ 错误</h3>
+                        <p>${data.error}</p>
+                    </div>
+                `;
+            }
+
+        } catch (error) {
+            resultsContent.innerHTML = `
+                <div style="color: #e74c3c; text-align: center;">
+                    <h3>❌ 网络错误</h3>
+                    <p>无法连接到服务器</p>
+                </div>
+            `;
+        } finally {
+            // 恢复按钮状态
+            runButton.disabled = false;
+            runButton.textContent = '🚀 运行实验';
+            loading.style.display = 'none';
+        }
+    }
+
+    function displayResults(results) {
+        const resultsContent = document.getElementById('resultsContent');
+        const selectedMetric = document.getElementById('metric').value;
+        const taskType = results.task_type || 'classification';
+
+        // 根据任务类型与选择的指标显示结果
+        let mainMetric, metricName, metricDescription;
+        if (taskType === 'classification') {
+            if (selectedMetric === 'f1') {
+                mainMetric = results.f1_score;
+                metricName = 'F1 分数';
+                metricDescription = '精确率和召回率的调和平均值';
+            } else {
+                mainMetric = results.accuracy;
+                metricName = '准确率';
+                metricDescription = '正确分类的样本比例';
+            }
+        } else if (taskType === 'regression') {
+            mainMetric = results.r2;
+            metricName = 'R²';
+            metricDescription = '拟合优度，越接近 1 越好';
+        } else {
+            mainMetric = 1;
+            metricName = '完成';
+            metricDescription = '无监督任务已完成拟合';
+        }
+
+        let html = `
+            <div class="results-container">
+                <!-- 数据集信息 -->
+                <div class="dataset-info card">
+                    <h3>📊 数据集信息</h3>
+                    <div class="info-grid">
+                        <p><strong>数据集:</strong> ${results.dataset}</p>
+                        <p><strong>样本数:</strong> ${results.dataset_info.samples}</p>
+                        <p><strong>特征数:</strong> ${results.dataset_info.features}</p>
+                        <p><strong>类别:</strong> ${results.dataset_info.target_names.join(', ')}</p>
+                        ${results.dataset_info.original_features ? 
+                            `<p><strong>原始特征:</strong> ${results.dataset_info.original_features.join(', ')}</p>` : 
+                            `<p><strong>特征:</strong> ${results.dataset_info.feature_names.join(', ')}</p>`
+                        }
+                    </div>
+                </div>
+
+                <!-- 模型配置和结果 -->
+                <div class="model-config card">
+                    <h3>🤖 实验配置与结果</h3>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                        <div>
+                            <p><strong>模型:</strong> ${results.model}</p>
+                            <p><strong>模型类型:</strong> ${results.model_type}</p>
+                            <p><strong>任务类型:</strong> ${taskType}</p>
+                        </div>
+                        <div>
+                            <p><strong>分割方式:</strong> ${results.split_method}</p>
+                            <p><strong>测试集比例:</strong> ${results.test_size}</p>
+                            <p><strong>评估指标:</strong> ${metricName}</p>
+                        </div>
+                    </div>
+                    
+                    ${taskType === 'classification' ? `
+                        <div class="accuracy">${(mainMetric * 100).toFixed(2)}%</div>
+                        <div style="text-align: center; color: #666; margin-top: -10px;">
+                            ${metricName} <br>
+                            <small style="font-size: 0.8em;">${metricDescription}</small>
+                        </div>
+                    ` : taskType === 'regression' ? `
+                        <div class="accuracy">${(mainMetric * 100).toFixed(2)}%</div>
+                        <div style="text-align: center; color: #666; margin-top: -10px;">
+                            R²（越高越好）<br>
+                            <small style="font-size: 0.8em;">同时显示 MSE / MAE / RMSE 于下方</small>
+                        </div>
+                    ` : `
+                        <div style="text-align: center; color: #666;">${metricName}</div>
+                    `}
+
+                    ${taskType === 'classification' ? `
+                        <div style="margin-top: 20px; background: white; padding: 15px; border-radius: 8px;">
+                            <h4 style="margin-top: 0; text-align: center;">📈 所有评估指标</h4>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                <div style="text-align: center; padding: 10px; ${selectedMetric === 'accuracy' ? 'background: #e8f4fd; border: 2px solid #3498db;' : 'background: #f8f9fa;'} border-radius: 5px;">
+                                    <div style="font-size: 1.2em; font-weight: bold; color: #3498db;">${(results.accuracy * 100).toFixed(2)}%</div>
+                                    <div style="font-size: 0.9em;">准确率</div>
+                                </div>
+                                <div style="text-align: center; padding: 10px; ${selectedMetric === 'f1' ? 'background: #e8f4fd; border: 2px solid #3498db;' : 'background: #f8f9fa;'} border-radius: 5px;">
+                                    <div style="font-size: 1.2em; font-weight: bold; color: #3498db;">${(results.f1_score * 100).toFixed(2)}%</div>
+                                    <div style="font-size: 0.9em;">F1 分数</div>
+                                </div>
+                            </div>
+                        </div>
+                    ` : taskType === 'regression' ? `
+                        <div style="margin-top: 20px; background: white; padding: 15px; border-radius: 8px;">
+                            <h4 style="margin-top: 0; text-align: center;">📈 回归评估指标</h4>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px;">
+                                <div class="metric-card"><div class="metric-value">${(results.r2 * 100).toFixed(2)}%</div><div class="metric-label">R²</div></div>
+                                <div class="metric-card"><div class="metric-value">${results.mse !== undefined ? results.mse : (results.cv_mse_scores ? results.cv_mse_scores.mean : '')}</div><div class="metric-label">MSE</div></div>
+                                <div class="metric-card"><div class="metric-value">${results.mae !== undefined ? results.mae : (results.cv_mae_scores ? results.cv_mae_scores.mean : '')}</div><div class="metric-label">MAE</div></div>
+                                <div class="metric-card"><div class="metric-value">${results.rmse !== undefined ? results.rmse : ''}</div><div class="metric-label">RMSE</div></div>
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+        `;
+
+        // 如果是交叉验证，显示详细分数
+        if (taskType === 'classification' && results.cv_scores && results.cv_scores.values) {
+            const cvMetric = selectedMetric === 'f1' ? results.cv_f1_scores : results.cv_scores;
+            html += `
+                <div class="card">
+                    <h3>📊 交叉验证结果 (${metricName})</h3>
+                    <p><strong>各折${metricName}:</strong> ${cvMetric.values.map(score => (score * 100).toFixed(2) + '%').join(', ')}</p>
+                    <p><strong>平均${metricName}:</strong> ${(cvMetric.mean * 100).toFixed(2)}%</p>
+                    <p><strong>标准差:</strong> ${(cvMetric.std * 100).toFixed(2)}%</p>
+                </div>
+            `;
+        }
+        if (taskType === 'regression' && results.cv_r2_scores && results.cv_r2_scores.values) {
+            html += `
+                <div class="card">
+                    <h3>📊 交叉验证结果 (R²/MSE)</h3>
+                    <p><strong>各折R²:</strong> ${results.cv_r2_scores.values.map(v => (v * 100).toFixed(2) + '%').join(', ')}</p>
+                    <p><strong>平均R²:</strong> ${(results.cv_r2_scores.mean * 100).toFixed(2)}%</p>
+                    <p><strong>MSE均值:</strong> ${results.cv_mse_scores.mean}</p>
+                    ${results.cv_mae_scores ? `<p><strong>MAE均值:</strong> ${results.cv_mae_scores.mean}</p>` : ''}
+                </div>`;
+        }
+
+        // 特征重要性显示（保持不变）
+        if (results.feature_importance && results.feature_importance.length > 0 && 
+            results.processed_feature_names && results.processed_feature_names.length > 0) {
+            
+            // 创建特征名和重要性的配对
+            const featuresWithImportance = results.processed_feature_names.map((name, index) => {
+                return {
+                    name: name || `特征_${index + 1}`,
+                    importance: results.feature_importance[index] || 0
+                };
+            });
+
+            // 按重要性排序并过滤掉重要性为0的特征
+            const validFeatures = featuresWithImportance.filter(f => f.importance > 0.001);
+            validFeatures.sort((a, b) => b.importance - a.importance);
+
+            // 只显示前10个最重要的特征
+            const topFeatures = validFeatures.slice(0, 10);
+
+            if (topFeatures.length > 0) {
+                html += `
+                    <div class="feature-importance card">
+                        <h3>📈 特征重要性 (Top ${topFeatures.length})</h3>
+                        ${topFeatures.map(feature => {
+                            const percentage = (feature.importance * 100).toFixed(1);
+                            return `
+                                <div class="feature-bar">
+                                    <span class="feature-name" title="${feature.name}">${feature.name.length > 15 ? feature.name.substring(0, 15) + '...' : feature.name}</span>
+                                    <div class="feature-value">
+                                        <div class="feature-fill" style="width: ${percentage}%"></div>
+                                    </div>
+                                    <span style="margin-left: 10px; font-size: 12px; min-width: 40px;">${percentage}%</span>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+            }
+        }
+
+        // 分类报告（如果存在）
+        if (taskType === 'classification' && results.classification_report) {
+            html += `
+                <div class="card">
+                    <h3>📋 详细分类报告</h3>
+                    <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; font-size: 14px; max-height: 300px; overflow-y: auto;">
+                        <pre style="margin: 0; white-space: pre-wrap;">${JSON.stringify(results.classification_report, null, 2)}</pre>
+                    </div>
+                </div>
+            `;
+        }
+
+        // 混淆矩阵（仅在随机分割时由后端返回）
+        if (taskType === 'classification' && results.confusion_matrix && Array.isArray(results.confusion_matrix)) {
+            const cm = results.confusion_matrix;
+            const labels = (results.dataset_info && results.dataset_info.target_names) ? results.dataset_info.target_names : cm.map((_, i) => `类${i}`);
+            const maxVal = cm.flat().reduce((a, b) => Math.max(a, b), 0) || 1;
+
+            const buildCell = (value) => {
+                const ratio = value / maxVal;
+                const bg = `rgba(52, 152, 219, ${0.15 + ratio * 0.65})`;
+                const color = ratio > 0.5 ? '#fff' : '#2c3e50';
+                return `<td style="padding:8px; text-align:center; background:${bg}; color:${color}; font-weight:600; border:1px solid #e9ecef;">${value}</td>`;
+            };
+
+            let tableHtml = `<table style="border-collapse:collapse; width:100%;">
+                <thead>
+                    <tr>
+                        <th style="width:100px"></th>
+                        ${labels.map(l => `<th style=\"padding:6px; border:1px solid #e9ecef; background:#f8f9fa;\">预测:${l}</th>`).join('')}
+                    </tr>
+                </thead>
+                <tbody>
+                    ${cm.map((row, i) => `
+                        <tr>
+                            <th style=\"text-align:left; padding:6px; border:1px solid #e9ecef; background:#f8f9fa;\">实际:${labels[i]}</th>
+                            ${row.map(v => buildCell(v)).join('')}
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>`;
+
+            html += `
+                <div class="card">
+                    <h3>🧩 混淆矩阵</h3>
+                    <div style="overflow-x:auto;">${tableHtml}</div>
+                </div>
+            `;
+        }
+
+        html += `</div>`; // 关闭results-container
+        
+        // 警告与提示展示
+        if (results.warnings && results.warnings.length) {
+            html += `
+                <div class="card">
+                    <h3>⚠️ 注意事项</h3>
+                    <ul style="margin:0; padding-left:18px; color:#8a6d3b;">
+                        ${results.warnings.map(w => `<li>${w}</li>`).join('')}
+                    </ul>
+                </div>
+            `;
+        }
+
+        // 无监督：展示 PCA / KMeans 结果
+        if (taskType === 'unsupervised') {
+            if (results.explained_variance_ratio) {
+                html += `
+                    <div class="card">
+                        <h3>🧮 PCA 结果</h3>
+                        <p><strong>主成分数:</strong> ${results.components}</p>
+                        <p><strong>方差解释率:</strong> ${results.explained_variance_ratio.map(v => (v*100).toFixed(2)+'%').join(', ')}</p>
+                    </div>
+                `;
+            }
+            if (results.cluster_counts) {
+                const entries = Object.entries(results.cluster_counts).map(([k,v]) => `${k}: ${v}`).join(', ');
+                html += `
+                    <div class="card">
+                        <h3>🧩 K-Means 聚类结果</h3>
+                        <p><strong>簇数量:</strong> ${results.clusters}</p>
+                        <p><strong>Inertia:</strong> ${results.inertia}</p>
+                        <p><strong>簇大小:</strong> ${entries}</p>
+                    </div>
+                `;
+            }
+        }
+
+        // 添加导出按钮
+        if (results.model) {
+            html += `
+                <div style="text-align: center; margin-top: 20px;">
+                    <button class="export-btn" onclick="exportResults()">📥 导出结果</button>
+                    <button class="export-btn" onclick="copyConfig()">📋 复制配置</button>
+                </div>
+            `;
+        }
+
+        resultsContent.innerHTML = html;
+        window.lastResults = results; // 保存结果供导出使用
+    }
+
+    // 获取超参数配置
+    function getHyperparamsConfig() {
+        const config = {};
+        const paramInputs = document.querySelectorAll('#hyperparamsContent input, #hyperparamsContent select');
+        paramInputs.forEach(input => {
+            config[input.id] = input.value;
+        });
+        return config;
+    }
+
+    // 导出结果
+    function exportResults() {
+        const results = window.lastResults;
+        if (!results) return;
+        
+        const dataStr = JSON.stringify(results, null, 2);
+        const dataBlob = new Blob([dataStr], {type: 'application/json'});
+        const url = URL.createObjectURL(dataBlob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `ml_results_${new Date().toISOString().slice(0,10)}.json`;
+        link.click();
+        URL.revokeObjectURL(url);
+    }
+
+    // 复制配置
+    function copyConfig() {
+        const config = {
+            dataset: document.getElementById('dataset').value,
+            test_size: document.getElementById('test_size').value,
+            split_method: document.getElementById('split_method').value,
+            model: document.getElementById('model').value,
+            metric: document.getElementById('metric').value,
+            hyperparams: getHyperparamsConfig()
+        };
+        navigator.clipboard.writeText(JSON.stringify(config, null, 2)).then(() => {
+            alert('配置已复制到剪贴板');
+        });
+    }
+
+    </script>
+
+</body>
+</html>
