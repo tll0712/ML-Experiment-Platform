@@ -253,6 +253,31 @@
             gap: 12px;
         }
 
+        .history-btn {
+            padding: 8px 16px;
+            background: linear-gradient(135deg, #4FC3F7 0%, #29B6F6 100%);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 2px 8px rgba(79, 195, 247, 0.3);
+        }
+
+        .history-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(79, 195, 247, 0.5);
+        }
+
+        .history-btn i {
+            font-size: 14px;
+        }
+
         .action-btn {
             padding: 8px 16px;
             background: #F8FAFC;
@@ -1308,6 +1333,49 @@
         }
 
         /* 模态框样式 */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            padding: 15px;
+        }
+
+        .modal-content {
+            background-color: white;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 900px;
+            margin: 3% auto;
+            padding: 20px;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2);
+        }
+
+        .modal-body {
+            padding: 20px 0;
+        }
+
+        .close {
+            color: #94A3B8;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            line-height: 1;
+            transition: color 0.2s ease;
+        }
+
+        .close:hover {
+            color: #1E293B;
+        }
+
         #comparisonModal {
             position: fixed;
             top: 0;
@@ -1455,9 +1523,30 @@
                 </a>
             </div>
             
-            <!-- 功能按钮区域（已移除设置按钮） -->
+            <!-- 功能按钮区域 -->
         </div>
     </nav>
+    
+    <!-- 历史记录模态框 -->
+    <div id="historyModal" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 900px; max-height: 90vh; overflow-y: auto;">
+            <div class="modal-header">
+                <h2><i class="fa fa-history"></i> 实验历史记录</h2>
+                <span class="close" id="closeHistoryModal">&times;</span>
+            </div>
+            <div class="modal-body" id="historyModalBody">
+                <div id="historyLoading" style="text-align: center; padding: 40px;">
+                    <i class="fa fa-spinner fa-spin" style="font-size: 24px; color: #4FC3F7;"></i>
+                    <p style="margin-top: 12px; color: #64748B;">加载中...</p>
+                </div>
+                <div id="historyList" style="display: none;"></div>
+                <div id="historyEmpty" style="display: none; text-align: center; padding: 40px; color: #94A3B8;">
+                    <i class="fa fa-inbox" style="font-size: 48px; margin-bottom: 16px;"></i>
+                    <p>暂无实验历史记录</p>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <div class="container">
         <div class="main-content horizontal">
@@ -1605,7 +1694,6 @@
                         <option value="random">随机分割</option>
                         <option value="stratified">分层分割</option>
                         <option value="kfold">K折交叉验证</option>
-                        <option value="stratified_kfold">分层K折交叉验证</option>
                     </select>
                                     <div class="parameter-description" style="font-size: 12px; color: #64748B; line-height: 1.5; margin: 0;">
                         不平衡数据建议使用分层分割
@@ -1711,6 +1799,9 @@
                 <div class="results-header">
                     <h2><i class="fa fa-chart-line"></i> 实验结果</h2>
                     <div>
+                        <button class="history-btn" id="historyBtn" title="查看实验历史" style="display: inline-block; width: auto; margin-right: 8px;">
+                            <i class="fa fa-history"></i> 历史记录
+                        </button>
                         <div style="display: inline-block; position: relative;">
                             <button class="upload-btn" onclick="showExportMenu(event)" style="display: inline-block; width: auto; margin-right: 8px;">
                                 <i class="fa fa-download"></i> 导出报告 <i class="fa fa-caret-down"></i>
@@ -2138,7 +2229,161 @@
 
         // 初始化功能按钮
         function initActionButtons() {
-            // 已移除设置与历史记录按钮
+            // 历史记录按钮
+            const historyBtn = document.getElementById('historyBtn');
+            const historyModal = document.getElementById('historyModal');
+            const closeHistoryModal = document.getElementById('closeHistoryModal');
+            
+            if (historyBtn) {
+                historyBtn.addEventListener('click', function() {
+                    historyModal.style.display = 'block';
+                    loadExperimentHistory();
+                });
+            }
+            
+            if (closeHistoryModal) {
+                closeHistoryModal.addEventListener('click', function() {
+                    historyModal.style.display = 'none';
+                });
+            }
+            
+            // 点击模态框外部关闭
+            if (historyModal) {
+                historyModal.addEventListener('click', function(e) {
+                    if (e.target === historyModal) {
+                        historyModal.style.display = 'none';
+                    }
+                });
+            }
+        }
+        
+        // 加载实验历史记录
+        function loadExperimentHistory() {
+            const historyLoading = document.getElementById('historyLoading');
+            const historyList = document.getElementById('historyList');
+            const historyEmpty = document.getElementById('historyEmpty');
+            
+            historyLoading.style.display = 'block';
+            historyList.style.display = 'none';
+            historyEmpty.style.display = 'none';
+            
+            fetch('/api/experiment_history')
+                .then(response => response.json())
+                .then(data => {
+                    historyLoading.style.display = 'none';
+                    
+                    if (data.success && data.history && data.history.length > 0) {
+                        historyList.style.display = 'block';
+                        renderHistoryList(data.history);
+                    } else {
+                        historyEmpty.style.display = 'block';
+                    }
+                })
+                .catch(error => {
+                    historyLoading.style.display = 'none';
+                    historyEmpty.style.display = 'block';
+                    historyEmpty.innerHTML = `
+                        <i class="fa fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 16px; color: #F59E0B;"></i>
+                        <p>加载失败: ${error.message}</p>
+                    `;
+                });
+        }
+        
+        // 渲染历史记录列表
+        function renderHistoryList(history) {
+            const historyList = document.getElementById('historyList');
+            
+            historyList.innerHTML = history.map(exp => {
+                const isClassification = exp.accuracy !== 'N/A' && exp.accuracy !== undefined;
+                const isRegression = exp.r2_score !== 'N/A' && exp.r2_score !== undefined;
+                
+                let metricsHtml = '';
+                if (isClassification) {
+                    metricsHtml = `
+                        <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+                            <span><strong>准确率:</strong> ${(exp.accuracy * 100).toFixed(2)}%</span>
+                            <span><strong>F1分数:</strong> ${exp.f1_score ? exp.f1_score.toFixed(4) : 'N/A'}</span>
+                        </div>
+                    `;
+                } else if (isRegression) {
+                    metricsHtml = `
+                        <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+                            <span><strong>R²:</strong> ${exp.r2_score ? exp.r2_score.toFixed(4) : 'N/A'}</span>
+                            <span><strong>MSE:</strong> ${exp.mse ? exp.mse.toFixed(4) : 'N/A'}</span>
+                        </div>
+                    `;
+                }
+                
+                return `
+                    <div class="history-item" style="background: white; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; margin-bottom: 12px; transition: all 0.3s ease;">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
+                            <div style="flex: 1;">
+                                <h4 style="margin: 0 0 8px 0; color: #1E293B; font-size: 16px;">
+                                    <i class="fa fa-flask" style="color: #4FC3F7; margin-right: 8px;"></i>
+                                    ${exp.model_name}
+                                </h4>
+                                <div style="color: #64748B; font-size: 13px; margin-bottom: 8px;">
+                                    <span><i class="fa fa-database"></i> ${exp.dataset}</span>
+                                    <span style="margin-left: 16px;"><i class="fa fa-clock-o"></i> ${exp.timestamp}</span>
+                                </div>
+                                ${metricsHtml}
+                            </div>
+                            <div style="display: flex; gap: 8px;">
+                                <button class="view-history-btn" onclick="viewExperimentDetail('${exp.experiment_id}')" style="padding: 6px 12px; background: #4FC3F7; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">
+                                    <i class="fa fa-eye"></i> 查看
+                                </button>
+                                <button class="delete-history-btn" onclick="deleteExperiment('${exp.experiment_id}')" style="padding: 6px 12px; background: #EF4444; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">
+                                    <i class="fa fa-trash"></i> 删除
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        // 查看实验详情
+        function viewExperimentDetail(experimentId) {
+            fetch(`/api/experiment/${experimentId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // 关闭历史记录模态框
+                        document.getElementById('historyModal').style.display = 'none';
+                        // 显示实验结果
+                        displayResults(data.experiment.results);
+                        // 滚动到结果区域
+                        document.querySelector('.results-panel').scrollIntoView({ behavior: 'smooth' });
+                    } else {
+                        alert('加载实验详情失败: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    alert('加载实验详情失败: ' + error.message);
+                });
+        }
+        
+        // 删除实验记录
+        function deleteExperiment(experimentId) {
+            if (!confirm('确定要删除这个实验记录吗？')) {
+                return;
+            }
+            
+            fetch(`/api/experiment/${experimentId}`, {
+                method: 'DELETE'
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // 重新加载历史记录列表
+                        loadExperimentHistory();
+                    } else {
+                        alert('删除失败: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    alert('删除失败: ' + error.message);
+                });
         }
 
         // 初始化超参数调优控制
@@ -2315,7 +2560,7 @@
             const testSizeConfig = document.getElementById('test_size_config');
             
             // 如果是K折交叉验证，隐藏测试集比例
-            if (splitMethod === 'kfold' || splitMethod === 'stratified_kfold') {
+            if (splitMethod === 'kfold') {
                 if (testSizeConfig) {
                     testSizeConfig.style.display = 'none';
                 }
@@ -2630,7 +2875,7 @@
             const kfoldConfig = document.getElementById('kfold_config');
             const cvFoldsSelect = document.getElementById('cv_folds');
             
-            if (splitMethod === 'kfold' || splitMethod === 'stratified_kfold') {
+            if (splitMethod === 'kfold') {
                 // 显示K折配置，并启用选择框
                 kfoldConfig.style.display = 'flex';
                 if (cvFoldsSelect) {
@@ -3186,6 +3431,131 @@
                 `}
         `;
 
+            // 显示数据预处理信息
+            console.log('检查预处理信息:', results.preprocessing_info);
+            if (results.preprocessing_info) {
+                const prepInfo = results.preprocessing_info;
+                console.log('预处理信息详情:', prepInfo);
+                // 只要有preprocessing_info就显示（即使steps为空，也显示前后对比）
+                let prepHtml = `
+                    <div class="result-card" id="preprocessingSection">
+                        <h3>🔧 数据预处理信息</h3>
+                        <div style="margin-top: 16px;">
+                            <!-- 预处理前后对比 -->
+                            ${prepInfo.before && prepInfo.after ? `
+                                <div style="margin-bottom: 20px; padding: 16px; background: #F8FAFC; border-radius: 8px; border: 1px solid #E2E8F0;">
+                                    <h4 style="margin: 0 0 12px 0; font-size: 14px; font-weight: 600; color: #334155;">📊 预处理前后对比</h4>
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                                        <div>
+                                            <div style="font-size: 12px; color: #64748B; margin-bottom: 8px;">预处理前</div>
+                                            <div style="font-size: 13px; color: #334155;">
+                                                <div style="margin-bottom: 4px;">样本数: <strong>${prepInfo.before.n_samples || 'N/A'}</strong></div>
+                                                <div>特征数: <strong>${prepInfo.before.n_features || 'N/A'}</strong></div>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div style="font-size: 12px; color: #64748B; margin-bottom: 8px;">预处理后</div>
+                                            <div style="font-size: 13px; color: #334155;">
+                                                <div style="margin-bottom: 4px;">样本数: <strong>${prepInfo.after.n_samples || 'N/A'}</strong></div>
+                                                <div>特征数: <strong>${prepInfo.after.n_features || 'N/A'}</strong></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ` : '<div style="padding: 12px; background: #FEF3C7; border-radius: 6px; color: #92400E; font-size: 13px;">⚠️ 预处理前后信息不完整</div>'}
+                            
+                            <!-- 预处理步骤列表 -->
+                            ${prepInfo.steps && prepInfo.steps.length > 0 ? `
+                                    <div style="margin-bottom: 20px;">
+                                        <h4 style="margin: 0 0 12px 0; font-size: 14px; font-weight: 600; color: #334155;">📋 预处理步骤</h4>
+                                        <div style="display: flex; flex-direction: column; gap: 12px;">
+                                            ${prepInfo.steps.map((step, index) => {
+                                                let stepDetails = '';
+                                                if (step.step === '缺失值处理' && step.missing_count_before !== undefined) {
+                                                    stepDetails = `<div style="font-size: 12px; color: #64748B; margin-top: 4px;">缺失值数量: ${step.missing_count_before}</div>`;
+                                                } else if (step.step === '异常值检测' && step.outlier_count !== undefined) {
+                                                    stepDetails = `<div style="font-size: 12px; color: #64748B; margin-top: 4px;">检测到异常值: ${step.outlier_count} 个</div>`;
+                                                } else if (step.step === '特征编码' && step.features_before !== undefined && step.features_after !== undefined) {
+                                                    stepDetails = `<div style="font-size: 12px; color: #64748B; margin-top: 4px;">特征数变化: ${step.features_before} → ${step.features_after}</div>`;
+                                                } else if (step.step === '特征选择' && step.features_before !== undefined && step.features_after !== undefined) {
+                                                    stepDetails = `<div style="font-size: 12px; color: #64748B; margin-top: 4px;">特征数变化: ${step.features_before} → ${step.features_after}</div>`;
+                                                } else if (step.step === '数据平衡' && step.samples_before !== undefined && step.samples_after !== undefined) {
+                                                    stepDetails = `<div style="font-size: 12px; color: #64748B; margin-top: 4px;">样本数变化: ${step.samples_before} → ${step.samples_after}</div>`;
+                                                }
+                                                
+                                                return `
+                                                    <div style="padding: 12px; background: white; border-left: 4px solid #4FC3F7; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                                                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                                                            <span style="font-size: 12px; color: #64748B; font-weight: 600;">步骤 ${index + 1}</span>
+                                                            <span style="font-size: 14px; font-weight: 600; color: #334155;">${step.step}</span>
+                                                        </div>
+                                                        <div style="font-size: 13px; color: #475569; margin-bottom: 4px;">
+                                                            方法: ${step.method || 'N/A'}
+                                                        </div>
+                                                        ${step.reason ? `<div style="font-size: 12px; color: #64748B; margin-top: 4px; font-style: italic;">原因: ${step.reason}</div>` : ''}
+                                                        ${stepDetails}
+                                                    </div>
+                                                `;
+                                            }).join('')}
+                                        </div>
+                                    </div>
+                                ` : ''}
+                            ${prepInfo.feature_selection_info ? `
+                                <div style="margin-bottom: 20px; padding: 16px; background: #F0F9FF; border-radius: 8px; border: 1px solid #BAE6FD;">
+                                    <h4 style="margin: 0 0 12px 0; font-size: 14px; font-weight: 600; color: #0C4A6E;">🎯 特征选择详情</h4>
+                                    <div style="font-size: 13px; color: #334155; margin-bottom: 12px;">
+                                        从 <strong>${prepInfo.feature_selection_info.n_features_before}</strong> 个特征中选择了 <strong>${prepInfo.feature_selection_info.n_features_after}</strong> 个重要特征
+                                    </div>
+                                    ${prepInfo.feature_selection_info.selected_features && prepInfo.feature_selection_info.selected_features.length > 0 ? `
+                                        <div style="font-size: 12px; color: #64748B; margin-bottom: 8px;">选择的特征（按重要性排序）:</div>
+                                        <div style="display: flex; flex-direction: column; gap: 6px;">
+                                            ${prepInfo.feature_selection_info.selected_features.slice(0, 10).map((feat, idx) => `
+                                                <div style="padding: 8px; background: white; border-radius: 4px; font-size: 12px;">
+                                                    <span style="color: #334155;">${idx + 1}. ${feat.name || `特征${feat.index}`}</span>
+                                                    <span style="color: #64748B; margin-left: 8px;">(得分: ${feat.score.toFixed(2)})</span>
+                                                </div>
+                                            `).join('')}
+                                            ${prepInfo.feature_selection_info.selected_features.length > 10 ? `
+                                                <div style="font-size: 12px; color: #64748B; font-style: italic;">... 还有 ${prepInfo.feature_selection_info.selected_features.length - 10} 个特征</div>
+                                            ` : ''}
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            ` : ''}
+                            
+                            <!-- 数据平衡详情 -->
+                            ${prepInfo.balance_info ? `
+                                <div style="padding: 16px; background: #ECFDF5; border-radius: 8px; border: 1px solid #86EFAC;">
+                                    <h4 style="margin: 0 0 12px 0; font-size: 14px; font-weight: 600; color: #166534;">⚖️ 数据平衡详情</h4>
+                                    <div style="font-size: 13px; color: #334155; margin-bottom: 12px;">
+                                        方法: <strong>${prepInfo.balance_info.method === 'smote' ? 'SMOTE过采样' : prepInfo.balance_info.method === 'undersample' ? '随机欠采样' : prepInfo.balance_info.method}</strong>
+                                    </div>
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                                        <div>
+                                            <div style="font-size: 12px; color: #64748B; margin-bottom: 8px;">平衡前类别分布</div>
+                                            <div style="font-size: 12px; color: #334155;">
+                                                ${Object.entries(prepInfo.balance_info.distribution_before || {}).map(([cls, count]) => `
+                                                    <div>类别 ${cls}: ${count} 个样本</div>
+                                                `).join('')}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div style="font-size: 12px; color: #64748B; margin-bottom: 8px;">平衡后类别分布</div>
+                                            <div style="font-size: 12px; color: #334155;">
+                                                ${Object.entries(prepInfo.balance_info.distribution_after || {}).map(([cls, count]) => `
+                                                    <div>类别 ${cls}: ${count} 个样本</div>
+                                                `).join('')}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+                html += prepHtml;
+            }
+
             // 显示训练集和测试集指标对比（仅在非交叉验证模式下）
             if (results.train_metrics && results.test_metrics && results.split_method !== 'N/A') {
                 if (taskType === 'classification') {
@@ -3290,21 +3660,47 @@
             }
 
             // 显示训练过程可视化（仅原创模型）
+            console.log('检查训练历史数据:', results.training_history);
             if (results.training_history) {
                 const th = results.training_history;
+                console.log('训练历史详情:', th);
                 const algorithm = th.algorithm || 'unknown';
                 const lossData = th.cost_history || th.loss_history;
                 
-                // 计算需要显示的图表数量
+                console.log('训练历史数据检查:', {
+                    hasLossData: !!lossData,
+                    lossDataLength: lossData ? lossData.length : 0,
+                    hasAccuracyHistory: !!th.accuracy_history,
+                    accuracyHistoryLength: th.accuracy_history ? th.accuracy_history.length : 0,
+                    hasGradientNormHistory: !!th.gradient_norm_history,
+                    gradientNormHistoryLength: th.gradient_norm_history ? th.gradient_norm_history.length : 0
+                });
+                
+                // 计算需要显示的图表数量（只计算有数据的图表）
                 let chartCount = 0;
-                if (lossData) chartCount++;
-                if (th.accuracy_history) chartCount++;
+                if (lossData && lossData.length > 0) chartCount++;
+                if (th.accuracy_history && th.accuracy_history.length > 0) chartCount++;
                 if (th.second_derivative_approx && th.second_derivative_approx.length > 0) chartCount++;
                 if (th.gradient_norm_history && th.gradient_norm_history.length > 0) chartCount++;
                 if (th.weight_norm_history && th.weight_norm_history.length > 0) chartCount++;
                 
-                const gridCols = chartCount <= 2 ? '1fr 1fr' : chartCount === 3 ? '1fr 1fr 1fr' : 'repeat(2, 1fr)';
+                console.log('图表数量:', chartCount);
                 
+                // 如果没有任何图表数据，仍然显示卡片但显示提示信息
+                if (chartCount === 0) {
+                    html += `
+                        <div class="result-card" id="trainingProcessSection">
+                            <h3>📈 算法训练过程可视化</h3>
+                            <div style="padding: 20px; text-align: center; color: #64748B;">
+                                <p>训练历史数据已记录，但图表数据为空。</p>
+                                <p style="font-size: 12px; margin-top: 8px;">算法类型: ${algorithm === 'logistic_regression' ? '逻辑回归' : algorithm === 'linear_regression_gd' ? '线性回归(梯度下降)' : '未知'}</p>
+                                <p style="font-size: 12px;">迭代次数: ${th.iterations || 0}</p>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    const gridCols = chartCount <= 2 ? '1fr 1fr' : chartCount === 3 ? '1fr 1fr 1fr' : 'repeat(2, 1fr)';
+                    
             html += `
                     <div class="result-card" id="trainingProcessSection">
                         <h3>📈 算法训练过程可视化</h3>
@@ -3319,14 +3715,14 @@
                         </div>
                         
                         <div style="display: grid; grid-template-columns: ${gridCols}; gap: 15px; margin-top: 15px;">
-                            ${lossData ? `
+                            ${lossData && lossData.length > 0 ? `
                             <div>
                                     <h4 style="margin: 0 0 10px 0; font-size: 13px; color: #334155; font-weight: 600;">损失函数下降曲线</h4>
                                 <canvas id="lossChart" width="300" height="200"></canvas>
                             </div>
                             ` : ''}
                             
-                            ${th.accuracy_history ? `
+                            ${th.accuracy_history && th.accuracy_history.length > 0 ? `
                             <div>
                                     <h4 style="margin: 0 0 10px 0; font-size: 13px; color: #334155; font-weight: 600;">准确率变化曲线</h4>
                                 <canvas id="accuracyChart" width="300" height="200"></canvas>
@@ -3356,6 +3752,9 @@
                         </div>
                 </div>
             `;
+                }
+        } else {
+            console.warn('训练历史数据不存在');
         }
 
             // 显示超参数调优结果
@@ -4179,9 +4578,23 @@
             
             // 渲染训练过程图表
             if (results.training_history) {
+                console.log('准备渲染训练图表:', results.training_history);
+                const th = results.training_history;
+                const lossData = th.cost_history || th.loss_history;
+                const hasCharts = (lossData && lossData.length > 0) || 
+                                 (th.accuracy_history && th.accuracy_history.length > 0) ||
+                                 (th.gradient_norm_history && th.gradient_norm_history.length > 0);
+                
+                if (hasCharts) {
                 setTimeout(() => {
+                        console.log('开始渲染训练图表...');
                     renderTrainingCharts(results.training_history);
-                }, 100);
+                    }, 200); // 增加延迟确保DOM已渲染
+                } else {
+                    console.warn('训练历史数据存在但图表数据为空');
+                }
+            } else {
+                console.warn('训练历史数据不存在，无法渲染训练图表');
             }
             
             
@@ -5664,6 +6077,7 @@
         // 注意：实验概览已移至固定摘要区域，不再出现在导航栏
         const candidates = [
             ['metricsSection', '📊 性能指标'],
+            ['preprocessingSection', '🔧 数据预处理'],
             ['confusionSection', '📋 混淆矩阵'],
             ['rocSection', '📈 ROC/PR曲线'],
             ['thresholdSection', '🎚️ 动态阈值调整'],
@@ -5778,6 +6192,7 @@
             // 实验概览已移至固定摘要区域，不再需要ID标记
             if (/^📊\s*性能指标$/.test(text.trim()) || /性能指标/.test(text)) id = 'metricsSection';
             else if (/(训练.*测试.*指标|训练.*测试|指标对比)/.test(text)) id = 'metricsSection';
+            else if (/数据预处理|预处理信息|preprocessing/i.test(text)) id = 'preprocessingSection';
             else if (/混淆矩阵/.test(text)) id = 'confusionSection';
             else if (/(ROC|PR|曲线)/i.test(text)) id = 'rocSection';
             else if (/动态阈值|阈值调整|threshold/i.test(text)) id = 'thresholdSection';
@@ -5921,12 +6336,24 @@
     }
 
         function renderTrainingCharts(trainingHistory) {
-            const iterations = Array.from({length: trainingHistory.iterations}, (_, i) => i + 1);
+            console.log('renderTrainingCharts 被调用，数据:', trainingHistory);
+            const iterations = Array.from({length: trainingHistory.iterations || 0}, (_, i) => i + 1);
             const lossData = trainingHistory.cost_history || trainingHistory.loss_history;
+            
+            console.log('渲染参数:', {
+                iterations: iterations.length,
+                lossDataLength: lossData ? lossData.length : 0,
+                hasAccuracyHistory: !!trainingHistory.accuracy_history,
+                accuracyHistoryLength: trainingHistory.accuracy_history ? trainingHistory.accuracy_history.length : 0,
+                hasGradientNormHistory: !!trainingHistory.gradient_norm_history,
+                gradientNormHistoryLength: trainingHistory.gradient_norm_history ? trainingHistory.gradient_norm_history.length : 0
+            });
             
             // 渲染损失函数曲线
             const lossCtx = document.getElementById('lossChart');
+            console.log('lossChart canvas元素:', lossCtx);
             if (lossCtx && lossData && lossData.length > 0) {
+                console.log('开始渲染损失曲线，数据点数量:', lossData.length);
                 new Chart(lossCtx, {
                     type: 'line',
             data: {
@@ -5961,11 +6388,20 @@
                 }
             }
         });
+                console.log('损失曲线渲染完成');
+    } else {
+                console.warn('损失曲线渲染失败:', {
+                    hasLossCtx: !!lossCtx,
+                    hasLossData: !!lossData,
+                    lossDataLength: lossData ? lossData.length : 0
+        });
     }
 
             // 渲染准确率变化
             const accuracyCtx = document.getElementById('accuracyChart');
+            console.log('accuracyChart canvas元素:', accuracyCtx);
             if (accuracyCtx && trainingHistory.accuracy_history && trainingHistory.accuracy_history.length > 0) {
+                console.log('开始渲染准确率曲线，数据点数量:', trainingHistory.accuracy_history.length);
                 new Chart(accuracyCtx, {
                     type: 'line',
             data: {
@@ -6001,6 +6437,13 @@
                             }
                         }
                     }
+                });
+                console.log('准确率曲线渲染完成');
+            } else {
+                console.warn('准确率曲线渲染失败:', {
+                    hasAccuracyCtx: !!accuracyCtx,
+                    hasAccuracyHistory: !!trainingHistory.accuracy_history,
+                    accuracyHistoryLength: trainingHistory.accuracy_history ? trainingHistory.accuracy_history.length : 0
                 });
             }
             

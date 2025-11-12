@@ -66,6 +66,10 @@ UPLOADED_DATASETS = {}
 # 模型对比实验存储
 COMPARISON_EXPERIMENTS = {}
 
+# 实验历史记录存储（最大保存100个实验）
+EXPERIMENT_HISTORY = {}
+MAX_HISTORY_SIZE = 100
+
 
 # ==================== 模型注册 ====================
 
@@ -155,6 +159,10 @@ class MyLogisticRegression:
         unique_classes = np.unique(y)
         self.classes_ = unique_classes
         self.n_classes_ = len(unique_classes)
+        
+        # 检查类别数量
+        if self.n_classes_ < 2:
+            raise ValueError(f"逻辑回归需要至少2个类别，但数据中只有{self.n_classes_}个类别")
         
         # 如果是二分类，使用原来的方法
         if self.n_classes_ == 2:
@@ -287,6 +295,9 @@ class MyLogisticRegression:
         
         if not self.multiclass_:
             # 二分类
+            if len(self.classes_) < 2:
+                # 如果只有一个类别，直接返回该类别的预测
+                return np.full(X.shape[0], self.classes_[0])
             proba = self.predict_proba(X)
             # proba现在是两列矩阵：(负类概率, 正类概率)
             # 取第二列（正类概率）进行判断，然后映射回原始类别标签
@@ -1053,6 +1064,10 @@ class MySVM:
         self.classes_ = unique_classes
         self.n_classes_ = len(unique_classes)
         
+        # 检查类别数量
+        if self.n_classes_ < 2:
+            raise ValueError(f"SVM需要至少2个类别，但数据中只有{self.n_classes_}个类别")
+        
         # 判断是否为多分类
         if self.n_classes_ == 2:
             # 二分类：直接使用原来的方法
@@ -1295,6 +1310,9 @@ class MySVM:
             predictions = self.classes_[np.argmax(decisions, axis=1)]
         else:
             # 二分类
+            if len(self.classes_) < 2:
+                # 如果只有一个类别，直接返回该类别的预测
+                return np.full(decisions.shape[0], self.classes_[0])
             predictions = np.where(decisions >= 0, self.classes_[1], self.classes_[0])
         
         return predictions
@@ -1524,6 +1542,10 @@ class MyGBDT:
         self.n_classes_ = len(self.classes_)
         is_multiclass = len(self.classes_) > 2
         
+        # 检查类别数量
+        if self.n_classes_ < 2:
+            raise ValueError(f"GBDT需要至少2个类别，但数据中只有{self.n_classes_}个类别")
+        
         # 初始化预测值
         if self.n_classes_ == 2:
             # 二分类：初始化为概率的对数几率
@@ -1610,6 +1632,9 @@ class MyGBDT:
         
         if self.n_classes_ == 2:
             # 二分类：累加所有树的预测
+            if len(self.classes_) < 2:
+                # 如果只有一个类别，直接返回该类别的预测
+                return np.full(X.shape[0], self.classes_[0])
             y_pred = np.full(X.shape[0], 0.5)  # 初始化为0.5
             
             for tree in self.estimators_:
@@ -1647,6 +1672,9 @@ class MyGBDT:
         
         if self.n_classes_ == 2:
             # 二分类
+            if len(self.classes_) < 2:
+                # 如果只有一个类别，返回单类概率
+                return np.column_stack([np.ones(X.shape[0]), np.zeros(X.shape[0])])
             y_pred = np.full(X.shape[0], 0.5)
             
             for tree in self.estimators_:
@@ -3348,83 +3376,189 @@ def enhanced_preprocessing(X, y, preprocessing_config):
     try:
         # 缺失值处理
         if preprocessing_config.get('handle_missing', False):
-            missing_before = int(np.isnan(X).sum()) if hasattr(X, 'shape') else 0
-            imputer = SimpleImputer(strategy='mean')
-            X = imputer.fit_transform(X)
-            preprocessing_info['steps'].append({
-                'step': '缺失值处理',
-                'method': '均值填充',
-                'missing_count_before': missing_before
-            })
+            if isinstance(X, pd.DataFrame):
+                missing_before = X.isnull().sum().sum()
+                if missing_before > 0:
+                    # 分别处理数值型和分类型特征
+                    numeric_cols = X.select_dtypes(include=[np.number]).columns.tolist()
+                    categorical_cols = X.select_dtypes(include=['object']).columns.tolist()
+                    
+                    # 对数值型特征使用均值填充
+                    if numeric_cols:
+                        numeric_imputer = SimpleImputer(strategy='mean')
+                        X[numeric_cols] = numeric_imputer.fit_transform(X[numeric_cols])
+                    
+                    # 对分类型特征使用众数填充
+                    if categorical_cols:
+                        categorical_imputer = SimpleImputer(strategy='most_frequent')
+                        X[categorical_cols] = categorical_imputer.fit_transform(X[categorical_cols])
+                    
+                    preprocessing_info['steps'].append({
+                        'step': '缺失值处理',
+                        'method': '数值特征：均值填充；分类特征：众数填充',
+                        'missing_count_before': missing_before,
+                        'numeric_features': len(numeric_cols),
+                        'categorical_features': len(categorical_cols)
+                    })
+            else:
+                # numpy数组，只包含数值型特征
+                missing_before = int(np.isnan(X).sum()) if hasattr(X, 'shape') else 0
+                if missing_before > 0:
+                    imputer = SimpleImputer(strategy='mean')
+                    X = imputer.fit_transform(X)
+                    preprocessing_info['steps'].append({
+                        'step': '缺失值处理',
+                        'method': '均值填充',
+                        'missing_count_before': missing_before
+                    })
         
         # 异常值检测
         if preprocessing_config.get('detect_outliers', False):
-            # 使用IQR方法检测异常值
-            Q1 = np.percentile(X, 25, axis=0)
-            Q3 = np.percentile(X, 75, axis=0)
-            IQR = Q3 - Q1
-            lower_bound = Q1 - 1.5 * IQR
-            upper_bound = Q3 + 1.5 * IQR
-            
-            # 标记异常值但不删除，仅记录
-            outlier_mask = np.any((X < lower_bound) | (X > upper_bound), axis=1)
-            outlier_count = int(np.sum(outlier_mask))
-            preprocessing_config['outlier_count'] = outlier_count
-            preprocessing_info['steps'].append({
-                'step': '异常值检测',
-                'method': 'IQR方法',
-                'outlier_count': outlier_count
-            })
+            # 只对数值型特征进行异常值检测
+            if isinstance(X, pd.DataFrame):
+                numeric_cols = X.select_dtypes(include=[np.number]).columns.tolist()
+                if numeric_cols:
+                    X_numeric = X[numeric_cols]
+                    # 使用IQR方法检测异常值
+                    Q1 = np.percentile(X_numeric, 25, axis=0)
+                    Q3 = np.percentile(X_numeric, 75, axis=0)
+                    IQR = Q3 - Q1
+                    lower_bound = Q1 - 1.5 * IQR
+                    upper_bound = Q3 + 1.5 * IQR
+                    
+                    # 标记异常值但不删除，仅记录
+                    outlier_mask = np.any((X_numeric < lower_bound) | (X_numeric > upper_bound), axis=1)
+                    outlier_count = int(np.sum(outlier_mask))
+                    preprocessing_config['outlier_count'] = outlier_count
+                    preprocessing_info['steps'].append({
+                        'step': '异常值检测',
+                        'method': 'IQR方法（仅数值特征）',
+                        'outlier_count': outlier_count,
+                        'numeric_features_checked': len(numeric_cols)
+                    })
+            else:
+                # numpy数组，所有特征都是数值型
+                # 使用IQR方法检测异常值
+                Q1 = np.percentile(X, 25, axis=0)
+                Q3 = np.percentile(X, 75, axis=0)
+                IQR = Q3 - Q1
+                lower_bound = Q1 - 1.5 * IQR
+                upper_bound = Q3 + 1.5 * IQR
+                
+                # 标记异常值但不删除，仅记录
+                outlier_mask = np.any((X < lower_bound) | (X > upper_bound), axis=1)
+                outlier_count = int(np.sum(outlier_mask))
+                preprocessing_config['outlier_count'] = outlier_count
+                preprocessing_info['steps'].append({
+                    'step': '异常值检测',
+                    'method': 'IQR方法',
+                    'outlier_count': outlier_count
+                })
         
         # 特征选择（树模型不需要外部特征选择，因为它们自带特征选择能力）
         tree_models = ['决策树', '随机森林', '梯度提升树(GBDT)']
         should_skip_feature_selection = any(model in str(preprocessing_config.get('model_name', '')) for model in tree_models)
         
         if preprocessing_config.get('feature_selection', False) and not should_skip_feature_selection:
-            k = preprocessing_config.get('n_features', min(10, X.shape[1]))
-            n_features_before = X.shape[1] if hasattr(X, 'shape') else len(X.columns)
-            
-            # 判断任务类型以选择正确的score function
-            from sklearn.feature_selection import f_classif, f_regression
-            if len(np.unique(y)) <= 20:  # 分类任务
-                score_func = f_classif
-            else:  # 回归任务
-                score_func = f_regression
-            
-            selector = SelectKBest(score_func=score_func, k=k)
-            X_selected = selector.fit_transform(X, y)
-            
-            # 获取选择的特征索引和分数
-            selected_features_mask = selector.get_support()
-            selected_indices = np.where(selected_features_mask)[0]
-            feature_scores = selector.scores_
-            
-            # 创建特征重要性列表
-            feature_importance_list = []
-            original_feature_names = preprocessing_info['before']['feature_names']
-            for idx in selected_indices:
-                feature_name = original_feature_names[idx] if original_feature_names and idx < len(original_feature_names) else f'特征{idx}'
-                feature_importance_list.append({
-                    'index': int(idx),
-                    'name': feature_name,
-                    'score': float(feature_scores[idx])
+            # 特征选择需要数值型数据，如果X包含分类特征，需要先编码
+            # 但为了简化，特征选择应该在preprocess_data之后进行
+            # 这里先检查X是否包含分类特征
+            if isinstance(X, pd.DataFrame):
+                categorical_cols = X.select_dtypes(include=['object']).columns.tolist()
+                if categorical_cols:
+                    # 如果包含分类特征，提示用户特征选择将在编码后进行
+                    # 暂时跳过，因为preprocess_data会处理编码
+                    preprocessing_info['steps'].append({
+                        'step': '特征选择',
+                        'method': '将在数据编码后执行',
+                        'note': '分类特征需要先编码才能进行特征选择'
+                    })
+                    # 不在这里执行特征选择，让preprocess_data先处理编码
+                    pass
+                else:
+                    # 只有数值型特征，可以直接进行特征选择
+                    k = preprocessing_config.get('n_features', min(10, X.shape[1]))
+                    n_features_before = X.shape[1]
+                    
+                    from sklearn.feature_selection import f_classif, f_regression
+                    if len(np.unique(y)) <= 20:
+                        score_func = f_classif
+                    else:
+                        score_func = f_regression
+                    
+                    selector = SelectKBest(score_func=score_func, k=k)
+                    X_selected = selector.fit_transform(X, y)
+                    
+                    selected_features_mask = selector.get_support()
+                    selected_indices = np.where(selected_features_mask)[0]
+                    feature_scores = selector.scores_
+                    
+                    feature_importance_list = []
+                    original_feature_names = preprocessing_info['before']['feature_names']
+                    for idx in selected_indices:
+                        feature_name = original_feature_names[idx] if original_feature_names and idx < len(original_feature_names) else f'特征{idx}'
+                        feature_importance_list.append({
+                            'index': int(idx),
+                            'name': feature_name,
+                            'score': float(feature_scores[idx])
+                        })
+                    feature_importance_list.sort(key=lambda x: x['score'], reverse=True)
+                    
+                    X = X_selected
+                    preprocessing_config['selected_features'] = k
+                    preprocessing_info['feature_selection_info'] = {
+                        'n_features_before': int(n_features_before),
+                        'n_features_after': int(k),
+                        'selected_features': feature_importance_list
+                    }
+                    preprocessing_info['steps'].append({
+                        'step': '特征选择',
+                        'method': f'SelectKBest (k={k})',
+                        'features_before': int(n_features_before),
+                        'features_after': int(k)
+                    })
+            else:
+                # numpy数组，所有特征都是数值型
+                k = preprocessing_config.get('n_features', min(10, X.shape[1]))
+                n_features_before = X.shape[1]
+                
+                from sklearn.feature_selection import f_classif, f_regression
+                if len(np.unique(y)) <= 20:
+                    score_func = f_classif
+                else:
+                    score_func = f_regression
+                
+                selector = SelectKBest(score_func=score_func, k=k)
+                X_selected = selector.fit_transform(X, y)
+                
+                selected_features_mask = selector.get_support()
+                selected_indices = np.where(selected_features_mask)[0]
+                feature_scores = selector.scores_
+                
+                feature_importance_list = []
+                original_feature_names = preprocessing_info['before']['feature_names']
+                for idx in selected_indices:
+                    feature_name = original_feature_names[idx] if original_feature_names and idx < len(original_feature_names) else f'特征{idx}'
+                    feature_importance_list.append({
+                        'index': int(idx),
+                        'name': feature_name,
+                        'score': float(feature_scores[idx])
+                    })
+                feature_importance_list.sort(key=lambda x: x['score'], reverse=True)
+                
+                X = X_selected
+                preprocessing_config['selected_features'] = k
+                preprocessing_info['feature_selection_info'] = {
+                    'n_features_before': int(n_features_before),
+                    'n_features_after': int(k),
+                    'selected_features': feature_importance_list
+                }
+                preprocessing_info['steps'].append({
+                    'step': '特征选择',
+                    'method': f'SelectKBest (k={k})',
+                    'features_before': int(n_features_before),
+                    'features_after': int(k)
                 })
-            # 按分数排序
-            feature_importance_list.sort(key=lambda x: x['score'], reverse=True)
-            
-            X = X_selected
-            preprocessing_config['selected_features'] = k
-            preprocessing_info['feature_selection_info'] = {
-                'n_features_before': int(n_features_before),
-                'n_features_after': int(k),
-                'selected_features': feature_importance_list
-            }
-            preprocessing_info['steps'].append({
-                'step': '特征选择',
-                'method': f'SelectKBest (k={k})',
-                'features_before': int(n_features_before),
-                'features_after': int(k)
-            })
         
         # 数据平衡
         if preprocessing_config.get('balance_data', False):
@@ -3755,23 +3889,96 @@ def train_and_evaluate(model_name, X, y, test_size, split_method, metric='accura
     # ========== 方案A：智能预处理（自动执行，无需用户选择）==========
     preprocessing_info = {'before': {}, 'steps': [], 'after': {}}  # 初始化preprocessing_info
     
+    # 初始化预处理前的信息
+    if hasattr(X, 'shape'):
+        preprocessing_info['before'] = {
+            'n_samples': int(X.shape[0]),
+            'n_features': int(X.shape[1]),
+            'feature_names': list(X.columns) if hasattr(X, 'columns') else (original_feature_names if original_feature_names else [f'特征_{i+1}' for i in range(X.shape[1])])
+        }
+    elif hasattr(X, '__len__'):
+        preprocessing_info['before'] = {
+            'n_samples': len(X),
+            'n_features': len(X[0]) if len(X) > 0 else 0,
+            'feature_names': original_feature_names if original_feature_names else None
+        }
+    
     # 1. 自动处理缺失值（所有算法都需要）
     send_progress(5, '正在自动处理缺失值...', step=1, total_steps=7, details='数据清洗')
+    
+    missing_before = 0
     if isinstance(X, pd.DataFrame):
         missing_before = X.isnull().sum().sum()
+        if missing_before > 0:
+            # 分别处理数值型和分类型特征
+            numeric_cols = X.select_dtypes(include=[np.number]).columns.tolist()
+            categorical_cols = X.select_dtypes(include=['object']).columns.tolist()
+            
+            from sklearn.impute import SimpleImputer
+            
+            # 对数值型特征使用均值填充
+            if numeric_cols:
+                numeric_imputer = SimpleImputer(strategy='mean')
+                X[numeric_cols] = numeric_imputer.fit_transform(X[numeric_cols])
+            
+            # 对分类型特征使用众数填充
+            if categorical_cols:
+                categorical_imputer = SimpleImputer(strategy='most_frequent')
+                X[categorical_cols] = categorical_imputer.fit_transform(X[categorical_cols])
+            
+            preprocessing_info['steps'].append({
+                'step': '缺失值处理',
+                'method': '数值特征：均值填充；分类特征：众数填充',
+                'missing_count_before': missing_before,
+                'numeric_features': len(numeric_cols),
+                'categorical_features': len(categorical_cols)
+            })
     else:
+        # numpy数组，只包含数值型特征
         missing_before = int(np.isnan(X).sum()) if hasattr(X, 'sum') else 0
+        if missing_before > 0:
+            from sklearn.impute import SimpleImputer
+            imputer = SimpleImputer(strategy='mean')
+            X = imputer.fit_transform(X)
+            preprocessing_info['steps'].append({
+                'step': '缺失值处理',
+                'method': '均值填充',
+                'missing_count_before': missing_before
+            })
     
-    if missing_before > 0:
-        from sklearn.impute import SimpleImputer
-        imputer = SimpleImputer(strategy='mean')
-        X = imputer.fit_transform(X) if not isinstance(X, pd.DataFrame) else pd.DataFrame(
-            imputer.fit_transform(X), columns=X.columns, index=X.index)
-        preprocessing_info['steps'].append({
-            'step': '缺失值处理',
-            'method': '均值填充',
-            'missing_count_before': missing_before
-        })
+    # 异常值检测（如果启用，在缺失值处理之后）
+    if preprocessing_config and preprocessing_config.get('detect_outliers', False):
+        # 执行异常值检测
+        if isinstance(X, pd.DataFrame):
+            numeric_cols = X.select_dtypes(include=[np.number]).columns.tolist()
+            if numeric_cols:
+                X_numeric = X[numeric_cols]
+                Q1 = np.percentile(X_numeric, 25, axis=0)
+                Q3 = np.percentile(X_numeric, 75, axis=0)
+                IQR = Q3 - Q1
+                lower_bound = Q1 - 1.5 * IQR
+                upper_bound = Q3 + 1.5 * IQR
+                outlier_mask = np.any((X_numeric < lower_bound) | (X_numeric > upper_bound), axis=1)
+                outlier_count = int(np.sum(outlier_mask))
+                preprocessing_info['steps'].append({
+                    'step': '异常值检测',
+                    'method': 'IQR方法（仅数值特征）',
+                    'outlier_count': outlier_count,
+                    'numeric_features_checked': len(numeric_cols)
+                })
+        else:
+            Q1 = np.percentile(X, 25, axis=0)
+            Q3 = np.percentile(X, 75, axis=0)
+            IQR = Q3 - Q1
+            lower_bound = Q1 - 1.5 * IQR
+            upper_bound = Q3 + 1.5 * IQR
+            outlier_mask = np.any((X < lower_bound) | (X > upper_bound), axis=1)
+            outlier_count = int(np.sum(outlier_mask))
+            preprocessing_info['steps'].append({
+                'step': '异常值检测',
+                'method': 'IQR方法',
+                'outlier_count': outlier_count
+            })
     
     # 2. 根据算法类型智能决定是否标准化
     send_progress(8, '正在智能预处理数据...', step=1, total_steps=7, details='数据标准化')
@@ -3798,15 +4005,12 @@ def train_and_evaluate(model_name, X, y, test_size, split_method, metric='accura
     model_name_lower = model_name.lower() if isinstance(model_name, str) else str(model_name).lower()
     standardization = False
     
+    # 只记录判断结果，不在这里添加步骤（步骤会在实际执行标准化时添加）
     if any(keyword in model_name_lower for keyword in [m.lower() for m in models_need_standardization]):
         standardization = True
-        preprocessing_info['steps'].append({
-            'step': '数据标准化',
-            'method': 'StandardScaler（均值0，方差1）',
-            'reason': '该算法对特征尺度敏感，标准化可提升性能'
-        })
     elif any(keyword in model_name_lower for keyword in [m.lower() for m in svm_models]):
         standardization = False
+        # SVM内部已做标准化，添加说明步骤
         preprocessing_info['steps'].append({
             'step': '数据标准化',
             'method': '已由SVM内部处理',
@@ -3814,6 +4018,7 @@ def train_and_evaluate(model_name, X, y, test_size, split_method, metric='accura
         })
     elif any(keyword in model_name_lower for keyword in [m.lower() for m in tree_models]):
         standardization = False
+        # 树模型不需要标准化，添加说明步骤
         preprocessing_info['steps'].append({
             'step': '数据标准化',
             'method': '未执行',
@@ -3821,22 +4026,25 @@ def train_and_evaluate(model_name, X, y, test_size, split_method, metric='accura
         })
     
     # 如果用户提供了preprocessing_config，仍执行enhanced_preprocessing（保留向后兼容）
+    enhanced_info = {}
     if preprocessing_config:
         send_progress(6, '正在执行增强数据预处理...')
         preprocessing_config['model_name'] = model_name
         # 覆盖standardization设置（智能决定优先）
         preprocessing_config['standardization'] = standardization
         X, y, enhanced_info = enhanced_preprocessing(X, y, preprocessing_config)
-        # 合并preprocessing_info
-        preprocessing_info['steps'].extend(enhanced_info.get('steps', []))
+        # 合并preprocessing_info（但排除已经在主流程中处理的步骤）
+        # 检查enhanced_info中的步骤，只添加未在主流程中处理的步骤
+        main_steps = {step.get('step') for step in preprocessing_info.get('steps', [])}
+        for step in enhanced_info.get('steps', []):
+            if step.get('step') not in main_steps:
+                preprocessing_info['steps'].append(step)
         if 'feature_selection_info' in enhanced_info:
             preprocessing_info['feature_selection_info'] = enhanced_info['feature_selection_info']
         if 'balance_info' in enhanced_info:
             preprocessing_info['balance_info'] = enhanced_info['balance_info']
     
-        results['preprocessing_info'] = preprocessing_info
-    
-                # 预处理数据
+    # 预处理数据（特征编码和标准化）
     send_progress(10, '正在预处理数据...', step=1, total_steps=7, details='数据清洗和特征工程')
     
     # 保存标准化前的数据分布（用于可视化）
@@ -3850,22 +4058,53 @@ def train_and_evaluate(model_name, X, y, test_size, split_method, metric='accura
         before_feature_names = preprocessing_info.get('before', {}).get('feature_names', None)
     
     if standardization and hasattr(X, 'shape') and X.shape[1] > 0:
-        n_features_to_show = min(10, X.shape[1])  # 显示更多特征（最多10个）
         standardization_before = {}
-        for i in range(n_features_to_show):
-            feature_col = X[:, i] if isinstance(X, np.ndarray) else (X.iloc[:, i] if hasattr(X, 'iloc') else X[i])
-            # 使用真实的特征名称
-            feature_name = before_feature_names[i] if before_feature_names and i < len(before_feature_names) else f'特征_{i+1}'
-            standardization_before[feature_name] = {
-                'mean': float(np.mean(feature_col)),
-                'std': float(np.std(feature_col)),
-                'min': float(np.min(feature_col)),
-                'max': float(np.max(feature_col))
-            }
+        if isinstance(X, pd.DataFrame):
+            # DataFrame：只处理数值型特征
+            numeric_cols = X.select_dtypes(include=[np.number]).columns.tolist()
+            n_features_to_show = min(10, len(numeric_cols))
+            for i, col_name in enumerate(numeric_cols[:n_features_to_show]):
+                feature_col = X[col_name]
+                standardization_before[col_name] = {
+                    'mean': float(np.mean(feature_col)),
+                    'std': float(np.std(feature_col)),
+                    'min': float(np.min(feature_col)),
+                    'max': float(np.max(feature_col))
+                }
+        else:
+            # numpy数组：所有特征都是数值型
+            n_features_to_show = min(10, X.shape[1])
+            for i in range(n_features_to_show):
+                feature_col = X[:, i]
+                feature_name = before_feature_names[i] if before_feature_names and i < len(before_feature_names) else f'特征_{i+1}'
+                standardization_before[feature_name] = {
+                    'mean': float(np.mean(feature_col)),
+                    'std': float(np.std(feature_col)),
+                    'min': float(np.min(feature_col)),
+                    'max': float(np.max(feature_col))
+                }
         if 'preprocessing_info' in locals():
             preprocessing_info['standardization_info'] = {'before': standardization_before}
     
+    # 记录特征编码前的特征数（用于显示特征编码步骤）
+    features_before_encoding = X.shape[1] if hasattr(X, 'shape') else (len(X.columns) if hasattr(X, 'columns') else 0)
+    categorical_features_before = []
+    if isinstance(X, pd.DataFrame):
+        categorical_features_before = X.select_dtypes(include=['object']).columns.tolist()
+    
     X_processed, feature_names, preprocessor = preprocess_data(X, y, standardization)
+    
+    # 记录特征编码步骤（如果有分类特征）
+    if len(categorical_features_before) > 0:
+        features_after_encoding = X_processed.shape[1] if hasattr(X_processed, 'shape') else len(feature_names) if feature_names else features_before_encoding
+        preprocessing_info['steps'].append({
+            'step': '特征编码',
+            'method': 'One-Hot Encoding（独热编码）',
+            'categorical_features': len(categorical_features_before),
+            'features_before': int(features_before_encoding),
+            'features_after': int(features_after_encoding),
+            'reason': f'将{len(categorical_features_before)}个分类特征转换为二进制特征'
+        })
     
     # 如果preprocess_data返回的feature_names为None（numpy数组情况），使用原始特征名称
     if feature_names is None:
@@ -3915,11 +4154,29 @@ def train_and_evaluate(model_name, X, y, test_size, split_method, metric='accura
             if 'standardization_info' not in preprocessing_info:
                 preprocessing_info['standardization_info'] = {}
             preprocessing_info['standardization_info']['after'] = standardization_after
-            preprocessing_info['steps'].append({
-                'step': '标准化',
-                'method': 'StandardScaler',
-                'applied': True
-            })
+            # 只在真正执行标准化时才添加步骤（避免与前面的判断步骤重复）
+            # 检查是否已经有标准化步骤（可能是SVM或树模型的说明步骤）
+            has_standardization_step = any(step.get('step') == '数据标准化' or step.get('step') == '标准化' for step in preprocessing_info.get('steps', []))
+            if not has_standardization_step:
+                preprocessing_info['steps'].append({
+                    'step': '数据标准化',
+                    'method': 'StandardScaler（均值0，方差1）',
+                    'reason': '该算法对特征尺度敏感，标准化可提升性能'
+                })
+    
+    # 设置预处理后的信息
+    if hasattr(X_processed, 'shape'):
+        preprocessing_info['after'] = {
+            'n_samples': int(X_processed.shape[0]),
+            'n_features': int(X_processed.shape[1]),
+            'feature_names': feature_names if feature_names else [f'特征_{i+1}' for i in range(X_processed.shape[1])]
+        }
+    elif hasattr(X_processed, '__len__'):
+        preprocessing_info['after'] = {
+            'n_samples': len(X_processed),
+            'n_features': len(X_processed[0]) if len(X_processed) > 0 else 0,
+            'feature_names': feature_names if feature_names else None
+        }
     
     # 创建模型实例（每次创建新实例，避免状态共享）
     send_progress(20, '正在初始化模型...', step=2, total_steps=7, details=f'加载 {model_name} 模型')
@@ -4096,8 +4353,14 @@ def train_and_evaluate(model_name, X, y, test_size, split_method, metric='accura
                 training_history = model.get_training_history()
                 if training_history:
                     results['training_history'] = training_history
+                    print(f"✅ 成功提取训练历史: {list(training_history.keys())}")
+                else:
+                    print("⚠️ 训练历史为空")
             except Exception as e:
+                print(f"❌ 提取训练历史失败: {str(e)}")
                 results['warnings'].append(f'提取训练历史失败: {str(e)}')
+        else:
+            print(f"ℹ️ 模型 {model_name} 不支持训练历史提取")
         
         send_progress(70, '正在预测并计算指标...', step=5, total_steps=7, details='模型预测和评估')
         # 同时预测训练集和测试集
@@ -4342,12 +4605,19 @@ def train_and_evaluate(model_name, X, y, test_size, split_method, metric='accura
                 (hasattr(model, '__class__') and 'NaiveBayes' in model.__class__.__name__) or
                 (hasattr(model, '__class__') and 'NaiveBayesModel' in model.__class__.__name__)
             )
+            print(f"🔍 检查朴素贝叶斯模型: model_name={model_name}, is_naive_bayes={is_naive_bayes}, model_class={model.__class__.__name__}")
             if is_naive_bayes:
                 # 检查模型是否有必要的属性
-                if not (hasattr(model, 'class_prior_') and hasattr(model, 'theta_') and hasattr(model, 'sigma_')):
+                has_class_prior = hasattr(model, 'class_prior_')
+                has_theta = hasattr(model, 'theta_')
+                has_sigma = hasattr(model, 'sigma_')
+                print(f"🔍 朴素贝叶斯属性检查: class_prior_={has_class_prior}, theta_={has_theta}, sigma_={has_sigma}")
+                if not (has_class_prior and has_theta and has_sigma):
                     results['warnings'].append('朴素贝叶斯模型缺少必要属性，跳过可视化数据生成')
+                    print("⚠️ 朴素贝叶斯模型缺少必要属性")
                 else:
                     send_progress(94, '正在生成朴素贝叶斯可视化数据...', step=7, total_steps=7, details='计算概率分布数据')
+                    print("✅ 开始生成朴素贝叶斯可视化数据")
                     
                     # 1. 先验概率可视化
                     class_prior_data = {}
@@ -4431,7 +4701,12 @@ def train_and_evaluate(model_name, X, y, test_size, split_method, metric='accura
                         'posterior_probabilities': posterior_probabilities,
                         'feature_importance': feature_importance_proba
                     }
+                    print(f"✅ 朴素贝叶斯可视化数据生成成功: {list(results['naive_bayes_visualization'].keys())}")
+                    print(f"   先验概率: {bool(class_prior_data)}, 特征分布: {bool(feature_distributions)}, 后验概率: {bool(posterior_probabilities)}, 特征重要性: {bool(feature_importance_proba)}")
         except Exception as e:
+            print(f"❌ 朴素贝叶斯可视化数据生成失败: {str(e)}")
+            import traceback
+            traceback.print_exc()
             results['warnings'].append(f'朴素贝叶斯可视化数据生成失败: {str(e)}')
         
         # SVM决策边界可视化（仅对SVM模型，且特征数为2时）
@@ -5250,6 +5525,17 @@ def train_and_evaluate(model_name, X, y, test_size, split_method, metric='accura
     results['model_type'] = get_model_type(model_name)
     results['task_type'] = get_task_type_extended(model_name)
     
+    # 添加预处理信息到results中（确保总是添加）
+    if 'preprocessing_info' in locals():
+        results['preprocessing_info'] = preprocessing_info
+    else:
+        # 如果preprocessing_info不存在，创建一个基本的
+        results['preprocessing_info'] = {
+            'before': {'n_samples': len(y) if hasattr(y, '__len__') else 0, 'n_features': 0},
+            'after': {'n_samples': len(y) if hasattr(y, '__len__') else 0, 'n_features': 0},
+            'steps': []
+        }
+    
     # 发送完成消息
     send_progress(100, '实验完成！')
     
@@ -5399,6 +5685,10 @@ def run_experiment():
         # 添加数据集信息
         results['dataset'] = dataset_name
         results['experiment_id'] = experiment_id
+        results['timestamp'] = timestamp
+        results['model_name'] = model_name
+        results['test_size'] = test_size
+        results['split_method'] = split_method
         
         # 生成详细的数据集统计信息
         detailed_stats = get_detailed_dataset_stats(X, y, feature_names, target_names, raw_df)
@@ -5422,6 +5712,32 @@ def run_experiment():
             }
         
         results['dataset_info'] = dataset_info
+        
+        # 保存实验历史
+        experiment_record = {
+            'experiment_id': experiment_id,
+            'timestamp': timestamp,
+            'model_name': model_name,
+            'dataset': dataset_name,
+            'dataset_id': dataset_id if dataset_name == 'custom' else None,
+            'label_column': label_column if dataset_name == 'custom' else None,
+            'test_size': test_size,
+            'split_method': split_method,
+            'cv_folds': cv_folds,
+            'metric': metric,
+            'hyperparams': hyperparams,
+            'preprocessing_config': preprocessing_config,
+            'results': results.copy()  # 保存完整结果
+        }
+        
+        # 如果历史记录超过最大数量，删除最旧的记录
+        if len(EXPERIMENT_HISTORY) >= MAX_HISTORY_SIZE:
+            # 按时间戳排序，删除最旧的
+            sorted_history = sorted(EXPERIMENT_HISTORY.items(), key=lambda x: x[1]['timestamp'])
+            oldest_id = sorted_history[0][0]
+            del EXPERIMENT_HISTORY[oldest_id]
+        
+        EXPERIMENT_HISTORY[experiment_id] = experiment_record
         
         # 确保所有NumPy类型都被转换
         results = convert_numpy_types(results)
@@ -5641,6 +5957,95 @@ def deleted_get_comparison_history():
         return jsonify({
             'success': False,
             'error': str(e)
+        })
+
+# 实验历史记录API
+@app.route('/api/experiment_history', methods=['GET'])
+def get_experiment_history():
+    """获取实验历史记录列表"""
+    try:
+        history_list = []
+        for exp_id, exp_data in EXPERIMENT_HISTORY.items():
+            # 提取关键信息用于列表展示
+            results = exp_data.get('results', {})
+            history_list.append({
+                'experiment_id': exp_id,
+                'timestamp': exp_data['timestamp'],
+                'model_name': exp_data['model_name'],
+                'dataset': exp_data['dataset'],
+                'test_size': exp_data['test_size'],
+                'split_method': exp_data['split_method'],
+                # 提取主要性能指标
+                'accuracy': results.get('accuracy', results.get('accuracy_test', 'N/A')),
+                'f1_score': results.get('f1_score', results.get('f1_test', 'N/A')),
+                'r2_score': results.get('r2_score', results.get('r2_test', 'N/A')),
+                'mse': results.get('mse', results.get('mse_test', 'N/A'))
+            })
+        
+        # 按时间倒序排列（最新的在前）
+        history_list.sort(key=lambda x: x['timestamp'], reverse=True)
+        
+        return jsonify({
+            'success': True,
+            'history': history_list,
+            'total': len(history_list)
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc() if app.debug else None
+        })
+
+@app.route('/api/experiment/<experiment_id>', methods=['GET'])
+def get_experiment_detail(experiment_id):
+    """获取特定实验的详细信息"""
+    try:
+        if experiment_id not in EXPERIMENT_HISTORY:
+            return jsonify({
+                'success': False,
+                'error': f'实验ID {experiment_id} 不存在'
+            }), 404
+        
+        exp_data = EXPERIMENT_HISTORY[experiment_id]
+        # 确保所有NumPy类型都被转换
+        exp_data = convert_numpy_types(exp_data)
+        
+        return jsonify({
+            'success': True,
+            'experiment': exp_data
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc() if app.debug else None
+        })
+
+@app.route('/api/experiment/<experiment_id>', methods=['DELETE'])
+def delete_experiment(experiment_id):
+    """删除指定的实验记录"""
+    try:
+        if experiment_id not in EXPERIMENT_HISTORY:
+            return jsonify({
+                'success': False,
+                'error': f'实验ID {experiment_id} 不存在'
+            }), 404
+        
+        del EXPERIMENT_HISTORY[experiment_id]
+        
+        return jsonify({
+            'success': True,
+            'message': f'实验 {experiment_id} 已删除'
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc() if app.debug else None
         })
 
 
